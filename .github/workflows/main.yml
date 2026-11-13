@@ -1,0 +1,51 @@
+name: Parrot OS + Cloudflare Fixed Tunnel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  parrot-os:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: Start Parrot OS Container with Web VNC (noVNC)
+        run: |
+          docker run -d \
+            --name parrot-box \
+            --network host \
+            parrotsec/security:latest \
+            bash -c "apt-get update && apt-get install -y xfce4 xfce4-goodies tightvncserver novnc websockify dbus-x11 python3 python3-pip git && \
+            mkdir -p ~/.vnc && \
+            echo 'MR.English2008' | vncpasswd -f > ~/.vnc/passwd && \
+            chmod 600 ~/.vnc/passwd && \
+            USER=root vncserver :1 -geometry 1366x768 -depth 24 && \
+            websockify -D --web=/usr/share/novnc/ 6080 localhost:5901 && \
+            tail -f /dev/null"
+
+      - name: Connect Cloudflare Tunnel via Token
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_TOKEN }}
+        run: |
+          if [ -z "$CF_TOKEN" ]; then
+            echo "ERROR: CLOUDFLARE_TOKEN secret is missing!"
+            exit 1
+          fi
+
+          curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared.deb
+
+          # تشغيل النفق في الخلفية باستخدام التوكن الخاص بحسابك
+          sudo cloudflared service install "$CF_TOKEN"
+          echo "Cloudflare Tunnel connected successfully!"
+
+      - name: Keep Alive
+        run: |
+          echo "=========================================================="
+          echo "=== السيرفر يعمل الآن! افتح الدومين اللي ربطته في Cloudflare ==="
+          echo "=== كلمة مرور الدخول (VNC Password): MR.English2008 ==="
+          echo "=========================================================="
+          while true; do
+            echo "[$(date +%T)] Parrot OS & Cloudflare Tunnel Active"
+            sleep 300
+          done
